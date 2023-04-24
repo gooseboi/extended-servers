@@ -14,7 +14,7 @@ fn send_file(stream: &mut impl Write, file_name: &str, mut file: File) -> io::Re
     println!("Sent file name {file_name}");
     let content_length = contents.len() as u32;
     stream.write(&(content_length).to_be_bytes())?;
-    stream.write(&checksum.to_be_bytes());
+    stream.write(&checksum.to_be_bytes())?;
     println!("Sent checksum {checksum}");
     let bytes = Byte::from_bytes(content_length.into()).get_appropriate_unit(true);
     println!("Sent content length {content_length} which is {bytes}");
