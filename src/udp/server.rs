@@ -5,29 +5,36 @@ use std::io::{self, BufWriter, Cursor, Read, Write};
 use std::net::UdpSocket;
 use std::{thread, time::Duration};
 
-fn receive_file_from_socket(socket: &mut UdpSocket) -> io::Result<String> {
-    let mut buf = vec![];
-    loop {
-        match socket.recv() {
-            _ => todo!(),
-        }
-    }
-}
+const MAX_DATAGRAM_SIZE: usize = 64 * 1024;
 
-fn handle_received(buf: &[u8]) -> io::Result<String> {
+fn receive_file_from_socket(socket: &mut UdpSocket) -> io::Result<String> {
     let mut buf = Vec::new();
-    loop {
-        match stream.read_to_end(&mut buf) {
-            Ok(_) => break,
-            Err(ref e) if e.kind() == io::ErrorKind::WouldBlock => {
-                println!("Waiting for more packets");
-                thread::sleep(Duration::from_millis(100));
-            }
-            Err(e) => return Err(e),
-        };
-    }
-    let mut cursor = Cursor::new(buf);
-    let file_name_size = cursor.read_u32::<BigEndian>()? as usize;
+    let read_again = |buf: &mut Vec<u8>| -> io::Result<Cursor<Vec<u8>>> {
+        let mut read_buf = [0; MAX_DATAGRAM_SIZE];
+        loop {
+            match socket.recv_from(&mut buf) {
+                Ok((read_bytes, _src)) => {
+                    let read = &read_buf[..read_bytes];
+                    buf.extend(read);
+                    break;
+                },
+                Err(ref e) if e.kind() == io::ErrorKind::WouldBlock => {
+                    println!("Waiting for more packets");
+                    thread::sleep(Duration::from_millis(100));
+                }
+                e@Err(_) => return e,
+            };
+        }
+        Ok(Cursor::new(buf.to_owned()))
+    };
+    let read_until_enough = |buf: &mut Vec<u8>, bytes: usize| -> io::Result<Cursor<Vec<u8>>>{
+        while buf.len() < bytes {
+            read_again(buf)?;
+        }
+        Ok(Cursor::new(buf.to_owned()))
+    };
+    let c = read_until_enough(&mut buf, 4)?;
+    let file_name_size = c.read_u32::<BigEndian>()? as usize;
     println!("Read size {file_name_size}");
     let file_name = {
         let mut v = vec![0; file_name_size];
@@ -66,7 +73,7 @@ fn main() {
         .expect("Provided a valid port as first argument");
 
     let addr = format!("127.0.0.1:{}", port);
-    let socket = UdpSocket::bind(&addr).expect(&format!("Could bind to port {}", port));
+    let mut socket = UdpSocket::bind(&addr).expect(&format!("Could bind to port {}", port));
     println!("Succesfully bound to {addr}!");
 
     loop {

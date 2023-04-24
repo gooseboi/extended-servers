@@ -4,20 +4,8 @@ version = "0.1.0"
 edition = "2021"
 
 [[bin]]
-name = "tcp-server"
-path = "src/tcp/server.rs"
-
-[[bin]]
-name = "tcp-client"
-path = "src/tcp/client.rs"
-
-[[bin]]
-name = "udp-server"
-path = "src/udp/server.rs"
-
-[[bin]]
-name = "udp-client"
-path = "src/udp/client.rs"
+name = "simple-tcp"
+path = "src/simple_packets/tcp.rs"
 
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
@@ -26,3 +14,5 @@ path = "src/udp/client.rs"
 byte-unit = "4.0.18"
 byteorder = "1.4.3"
 crc32fast = "1.3.2"
+serde = { version = "1.0.160", features = ["derive"] }
+serde_json = "1.0.96"
