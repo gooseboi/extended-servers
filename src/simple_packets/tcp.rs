@@ -2,11 +2,12 @@ use std::env;
 use std::io::{self, Read, Write};
 use std::net::{TcpListener, TcpStream};
 use std::thread;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
-use extended::common::{SimplePayload, MAX_LOOPS};
+use extended::common::{SimplePayload, MAX_LOOPS, WAITING_MS};
 
 fn handle_incoming(mut stream: TcpStream) -> io::Result<()> {
+    let now = Instant::now();
     println!("Received input from {}", stream.peer_addr()?);
     stream.set_nonblocking(true)?;
     let mut buf = vec![];
@@ -17,10 +18,10 @@ fn handle_incoming(mut stream: TcpStream) -> io::Result<()> {
                 // wait until network socket is ready, typically implemented
                 // via platform-specific APIs such as epoll or IOCP
                 println!("Waiting");
-                thread::sleep(Duration::from_millis(10));
+                thread::sleep(Duration::from_millis(WAITING_MS));
             }
-            Err(e) => panic!("encountered IO error: {e}"),
-        };
+            Err(e) => return Err(e),
+        }
     }
 
     let mut read = &buf[..];
@@ -31,12 +32,13 @@ fn handle_incoming(mut stream: TcpStream) -> io::Result<()> {
         };
         let payload: serde_json::Result<SimplePayload> = serde_json::from_reader(&read[..=idx]);
         println!("Received payload {payload:?}");
-        if read.len() <= idx +1{
+        if read.len() <= idx + 1 {
             break;
         };
         read = &read[(idx + 1)..];
     }
     println!("Finished reading!");
+    println!("Took {:?}", now.elapsed());
 
     Ok(())
 }
@@ -46,7 +48,8 @@ fn become_receiver(port: &str) -> io::Result<()> {
         .parse::<usize>()
         .expect("Provided a number as first argument");
     let addr = format!("127.0.0.1:{port}");
-    let listener = TcpListener::bind(addr)?;
+    let listener = TcpListener::bind(&addr)?;
+    println!("Bound to {addr}");
 
     for stream in listener.incoming() {
         handle_incoming(stream?)?;
@@ -55,7 +58,8 @@ fn become_receiver(port: &str) -> io::Result<()> {
 }
 
 fn become_sender(addr: &str) -> io::Result<()> {
-    let mut stream = TcpStream::connect(addr)?;
+    let mut stream = TcpStream::connect(&addr)?;
+    println!("Connected to {addr}");
     for i in 0..MAX_LOOPS {
         let payload = SimplePayload::new();
         let s = payload.to_string();
