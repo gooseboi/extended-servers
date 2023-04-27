@@ -73,14 +73,14 @@ fn become_receiver(port: &str) -> io::Result<()> {
     let mut read_until = 0;
     let mut read_payloads = 0;
     let mut invalid_payloads = 0;
-    let mut now = Instant::now();
+    let mut now = None;
     while read_payloads < MAX_LOOPS {
         log!("Starting loop");
         if !extend_with_read(&mut buf)? {
             println!("Finished reading!");
             break;
         }
-        now = Instant::now();
+        now = Some(now.unwrap_or(Instant::now()));
         log!("Finished first if");
         let curr_buf = &buf[read_until..];
 
@@ -117,7 +117,7 @@ fn become_receiver(port: &str) -> io::Result<()> {
         read_payloads += 1;
         read_until += idx + 1;
     }
-    println!("Time elapsed: {:?}", now.elapsed());
+    println!("Time elapsed: {:?}", now.unwrap().elapsed());
     println!(
         "{}/{} were read correctly!",
         read_payloads - invalid_payloads,
