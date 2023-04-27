@@ -4,7 +4,7 @@ use std::net::UdpSocket;
 use std::thread;
 use std::time::{Duration, Instant};
 
-use extended::common::{log, SimplePayload, MAX_LOOPS, WAITING_MS};
+use extended::common::{log, SimplePayload, MAX_LOOPS, SLEEP_MS, WAITING_MS};
 
 fn become_sender(addr: &str) -> io::Result<()> {
     let socket = UdpSocket::bind("127.0.0.1:0")?;
@@ -17,6 +17,7 @@ fn become_sender(addr: &str) -> io::Result<()> {
         print!("Sending {payload}...");
         socket.send(payload.as_bytes())?;
         println!("Sent!");
+        thread::sleep(Duration::from_millis(WAITING_MS));
     }
 
     Ok(())
@@ -39,7 +40,7 @@ fn become_receiver(port: &str) -> io::Result<()> {
                 Ok(n) => break n,
                 Err(ref e) if e.kind() == io::ErrorKind::WouldBlock => {
                     log!("Waiting");
-                    thread::sleep(Duration::from_millis(WAITING_MS));
+                    thread::sleep(Duration::from_millis(SLEEP_MS));
                     Ok(())
                 }
                 Err(e) => Err(e),
@@ -56,7 +57,7 @@ fn become_receiver(port: &str) -> io::Result<()> {
         while retries != 0 && read_bytes == 0 {
             log!("Retry number {}", 5 - retries);
             (read_bytes, read_buf) = read_from_socket()?;
-            thread::sleep(Duration::from_millis(100));
+            thread::sleep(Duration::from_millis(SLEEP_MS));
             retries -= 1;
         }
 

@@ -4,7 +4,7 @@ use std::net::{TcpListener, TcpStream};
 use std::thread;
 use std::time::{Duration, Instant};
 
-use extended::common::{SimplePayload, MAX_LOOPS, WAITING_MS};
+use extended::common::{SimplePayload, MAX_LOOPS, WAITING_MS, SLEEP_MS};
 
 fn handle_incoming(mut stream: TcpStream) -> io::Result<()> {
     let now = Instant::now();
@@ -18,7 +18,7 @@ fn handle_incoming(mut stream: TcpStream) -> io::Result<()> {
                 // wait until network socket is ready, typically implemented
                 // via platform-specific APIs such as epoll or IOCP
                 println!("Waiting");
-                thread::sleep(Duration::from_millis(WAITING_MS));
+                thread::sleep(Duration::from_millis(SLEEP_MS));
             }
             Err(e) => return Err(e),
         }
@@ -58,6 +58,7 @@ fn become_receiver(port: &str) -> io::Result<()> {
 }
 
 fn become_sender(addr: &str) -> io::Result<()> {
+    println!("Trying to connect to {addr}");
     let mut stream = TcpStream::connect(&addr)?;
     println!("Connected to {addr}");
     for i in 0..MAX_LOOPS {
@@ -70,7 +71,7 @@ fn become_sender(addr: &str) -> io::Result<()> {
             }
             e @ Err(_) => eprintln!("Could only send {i} copies: {e:?}"),
         }
-        thread::sleep(Duration::from_millis(10));
+        thread::sleep(Duration::from_millis(WAITING_MS));
     }
     println!("Finished sending!");
 

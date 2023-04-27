@@ -1,9 +1,10 @@
 use serde::{Deserialize, Serialize};
 use std::time::{SystemTime, UNIX_EPOCH};
 
-pub const MAX_LOOPS: usize = 10;
+pub const MAX_LOOPS: usize = 100;
 pub const DEBUG_LOG: bool = false;
-pub const WAITING_MS: u64 = 10;
+pub const WAITING_MS: u64 = 1;
+pub const SLEEP_MS: u64 = 1;
 
 #[derive(Serialize, Deserialize, Debug)]
 pub struct SimplePayload {
