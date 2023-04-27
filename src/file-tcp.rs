@@ -1,4 +1,5 @@
 use std::env;
+use std::fs;
 use std::io::{self, Read, Write};
 use std::net::{TcpListener, TcpStream};
 use std::thread;
@@ -43,10 +44,12 @@ fn handle_incoming(mut stream: TcpStream) -> io::Result<()> {
     Ok(())
 }
 
-fn become_receiver(port: &str) -> io::Result<()> {
-    let port = port
+fn become_receiver(mut args: env::Args) -> io::Result<()> {
+    let port = args
+        .next()
+        .expect("Provided a second argument")
         .parse::<usize>()
-        .expect("Provided a number as first argument");
+        .expect("Provided a number as second argument");
     let addr = format!("127.0.0.1:{port}");
     let listener = TcpListener::bind(&addr)?;
     println!("Bound to {addr}");
@@ -57,10 +60,21 @@ fn become_receiver(port: &str) -> io::Result<()> {
     Ok(())
 }
 
-fn become_sender(addr: &str) -> io::Result<()> {
+fn become_sender(mut args: env::Args) -> io::Result<()> {
+    let addr = args.next().expect("Provided a second argument");
+    let fname = args.next().expect("Provided a third argument");
+    let file = fs::read(&fname)?;
+    let file_len = file.len();
+    println!("Read file {fname} of length {} bytes", file_len);
+
     println!("Trying to connect to {addr}");
     let mut stream = TcpStream::connect(&addr)?;
     println!("Connected to {addr}");
+
+    stream.write(file_len)?;
+    stream.write(&file)?;
+
+
     for i in 0..MAX_LOOPS {
         let payload = SimplePayload::new();
         let s = payload.to_string();
@@ -83,10 +97,9 @@ fn main() -> io::Result<()> {
     let _name = args.next().expect("There must be a 0th argument");
     let ty = args.next().expect("Provided a first argument");
 
-    let snd = args.next().expect("Provided a second argument");
     match ty.as_str() {
-        "sender" => become_sender(&snd),
-        "receiver" => become_receiver(&snd),
+        "sender" => become_sender(args),
+        "receiver" => become_receiver(args),
         _ => panic!("Unknown program type {}", ty),
     }
 }

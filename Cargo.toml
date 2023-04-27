@@ -11,6 +11,14 @@ path = "src/simple-tcp.rs"
 name = "simple-udp"
 path = "src/simple-udp.rs"
 
+[[bin]]
+name = "file-tcp"
+path = "src/file-tcp.rs"
+
+[[bin]]
+name = "file-udp"
+path = "src/file-udp.rs"
+
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
