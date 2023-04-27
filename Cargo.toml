@@ -5,11 +5,11 @@ edition = "2021"
 
 [[bin]]
 name = "simple-tcp"
-path = "src/simple_packets/tcp.rs"
+path = "src/simple-tcp.rs"
 
 [[bin]]
 name = "simple-udp"
-path = "src/simple_packets/udp.rs"
+path = "src/simple-udp.rs"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
