@@ -1,11 +1,12 @@
+use byteorder::{BigEndian, ReadBytesExt};
 use std::env;
 use std::fs;
-use std::io::{self, Read, Write};
+use std::io::{self, Cursor, Read, Write};
 use std::net::{TcpListener, TcpStream};
 use std::thread;
 use std::time::{Duration, Instant};
 
-use extended::common::{SimplePayload, MAX_LOOPS, SLEEP_MS, WAITING_MS};
+use extended::common::SLEEP_MS;
 
 fn handle_incoming(mut stream: TcpStream) -> io::Result<()> {
     let now = Instant::now();
@@ -24,23 +25,39 @@ fn handle_incoming(mut stream: TcpStream) -> io::Result<()> {
             Err(e) => return Err(e),
         }
     }
+    println!("Took {:?} to receive the data", now.elapsed());
 
-    let mut read = &buf[..];
-    loop {
-        let idx = match buf.iter().enumerate().find(|(_, v)| **v == b'}') {
-            Some((idx, _)) => idx,
-            None => break,
-        };
-        let payload: serde_json::Result<SimplePayload> = serde_json::from_reader(&read[..=idx]);
-        println!("Received payload {payload:?}");
-        if read.len() <= idx + 1 {
-            break;
-        };
-        read = &read[(idx + 1)..];
+    let buf_len = buf.len();
+    let mut cursor = Cursor::new(buf);
+    let len = cursor.read_u64::<BigEndian>()? as usize;
+    println!("Got len {len}");
+    let file = {
+        let mut buf = vec![0; len];
+        match cursor.read_exact(&mut buf) {
+            Ok(_) => {} // don't care
+            Err(e) if e.kind() == io::ErrorKind::UnexpectedEof => {
+                eprintln!("Did not receive enough bytes!");
+                eprintln!(
+                    "Only got {} when at least {} where needed!",
+                    buf_len - 8,
+                    len
+                );
+                return Err(e);
+            }
+            e @ Err(_) => return e,
+        }
+        buf
+    };
+
+    let recv_hash = cursor.read_u32::<BigEndian>()?;
+    println!("Received hash {recv_hash}");
+    let computed_hash = crc32fast::hash(&file);
+    println!("Computed hash {computed_hash}");
+    if recv_hash != computed_hash {
+        println!("Hashes differ, something went wrong!");
+    } else {
+        println!("Hashes match, file sent successfully!");
     }
-    println!("Finished reading!");
-    println!("Took {:?}", now.elapsed());
-
     Ok(())
 }
 
@@ -71,22 +88,11 @@ fn become_sender(mut args: env::Args) -> io::Result<()> {
     let mut stream = TcpStream::connect(&addr)?;
     println!("Connected to {addr}");
 
-    stream.write(file_len)?;
+    stream.write(&(file_len as u64).to_be_bytes())?;
     stream.write(&file)?;
-
-
-    for i in 0..MAX_LOOPS {
-        let payload = SimplePayload::new();
-        let s = payload.to_string();
-        print!("Sending {s}...");
-        match stream.write(s.as_bytes()) {
-            Ok(_) => {
-                println!("Sent!");
-            }
-            e @ Err(_) => eprintln!("Could only send {i} copies: {e:?}"),
-        }
-        thread::sleep(Duration::from_millis(WAITING_MS));
-    }
+    let hash = crc32fast::hash(&file);
+    println!("Sending hash {hash}");
+    stream.write(&hash.to_be_bytes())?;
     println!("Finished sending!");
 
     Ok(())

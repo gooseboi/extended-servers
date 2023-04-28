@@ -1,30 +1,17 @@
+use byteorder::{BigEndian, ReadBytesExt};
 use std::env;
-use std::io;
+use std::fs;
+use std::io::{self, Cursor, Read};
 use std::net::UdpSocket;
 use std::thread;
 use std::time::{Duration, Instant};
 
-use extended::common::{log, SimplePayload, MAX_LOOPS, SLEEP_MS, WAITING_MS};
+use extended::common::{log, SLEEP_MS};
 
-fn become_sender(addr: &str) -> io::Result<()> {
-    let socket = UdpSocket::bind("127.0.0.1:0")?;
-    socket.connect(addr)?;
-    println!("Connected to {addr}");
-
-    for _ in 0..MAX_LOOPS {
-        let payload = SimplePayload::new();
-        let payload = payload.to_string();
-        print!("Sending {payload}...");
-        socket.send(payload.as_bytes())?;
-        println!("Sent!");
-        thread::sleep(Duration::from_millis(WAITING_MS));
-    }
-
-    Ok(())
-}
-
-fn become_receiver(port: &str) -> io::Result<()> {
-    let port = port
+fn become_receiver(mut args: env::Args) -> io::Result<()> {
+    let port = args
+        .next()
+        .expect("Expected a second argument")
         .parse::<usize>()
         .expect("Provided a number as first argument");
     let addr = format!("127.0.0.1:{port}");
@@ -69,60 +56,64 @@ fn become_receiver(port: &str) -> io::Result<()> {
         })
     };
 
+    let extend_at_least = |buf: &mut Vec<u8>, n: usize| -> io::Result<()> {
+        let len = buf.len();
+        while buf.len() < len + n {
+            if !extend_with_read(buf)? {
+                return Err(io::Error::new(
+                    io::ErrorKind::UnexpectedEof,
+                    "Missing data!",
+                ));
+            }
+        }
+        Ok(())
+    };
+
     let mut buf = vec![];
-    let mut read_until = 0;
-    let mut read_payloads = 0;
-    let mut invalid_payloads = 0;
-    let mut now = None;
-    while read_payloads < MAX_LOOPS {
-        log!("Starting loop");
-        if !extend_with_read(&mut buf)? {
-            println!("Finished reading!");
-            break;
-        }
-        now = Some(now.unwrap_or(Instant::now()));
-        log!("Finished first if");
-        let curr_buf = &buf[read_until..];
-
-        let idx = match curr_buf.iter().enumerate().find(|(_, v)| **v == b'}') {
-            Some((idx, _)) => idx,
-            None => {
-                log!("Could not find {{");
-                if !extend_with_read(&mut buf)? {
-                    log!("Finished reading!");
-                    break;
-                } else {
-                    continue;
-                }
-            }
-        };
-
-        let payload_buf = &curr_buf[..=idx];
-        let mut payload: serde_json::Result<SimplePayload> = serde_json::from_reader(payload_buf);
-        while payload.is_err() {
-            log!("Invalid payload");
-            if !extend_with_read(&mut buf)? {
-                log!("Finished reading");
-                break;
-            }
-            let payload_buf = &buf[read_until..=idx];
-            payload = serde_json::from_reader(payload_buf);
-        }
-        let payload = payload.unwrap();
-        println!("Read {}", payload.to_string());
-        if payload.x != payload.millis / 60 && payload.y != payload.millis / (60 * 60) {
-            println!("Read invalid payload!");
-            invalid_payloads += 1;
-        }
-        read_payloads += 1;
-        read_until += idx + 1;
+    extend_at_least(&mut buf, 8)?;
+    let len = buf.as_slice().read_u64::<BigEndian>()? as usize;
+    println!("Read len {len}");
+    let now = Instant::now();
+    println!("Length before extending: {}", buf.len());
+    extend_at_least(&mut buf, len + 4)?;
+    println!("Took {:?} to receive the data", now.elapsed());
+    let mut cursor = Cursor::new(&buf[8..]);
+    let file = {
+        let mut file_buf = vec![0; len];
+        cursor.read_exact(&mut file_buf)?;
+        file_buf
+    };
+    let recv_hash = cursor.read_u32::<BigEndian>()?;
+    println!("Got hash {recv_hash}");
+    let computed_hash = crc32fast::hash(&file);
+    println!("Computed hash {computed_hash}");
+    if recv_hash != computed_hash {
+        println!("Hashes differ, something went wrong!");
+    } else {
+        println!("Hashes match, file sent successfully!");
     }
-    println!("Time elapsed: {:?}", now.unwrap().elapsed());
-    println!(
-        "{}/{} were read correctly!",
-        read_payloads - invalid_payloads,
-        read_payloads
-    );
+
+    Ok(())
+}
+
+fn become_sender(mut args: env::Args) -> io::Result<()> {
+    let addr = args.next().expect("Expected a second argument");
+    let socket = UdpSocket::bind("127.0.0.1:0")?;
+    socket.connect(&addr)?;
+    println!("Connected to {addr}");
+
+    let fname = args.next().expect("Expected a third argument");
+    let file = fs::read(fname)?;
+    let len = file.len() as u64;
+    let hash = crc32fast::hash(&file);
+    println!("Sending len {len}");
+    println!("Sending hash {hash}");
+
+    socket.send(&len.to_be_bytes())?;
+    socket.send(&file)?;
+    socket.send(&hash.to_be_bytes())?;
+    println!("Finished sending files to socket!");
+
     Ok(())
 }
 
@@ -131,10 +122,9 @@ fn main() -> io::Result<()> {
     let _name = args.next().expect("There must be a 0th argument");
     let ty = args.next().expect("Provided a first argument");
 
-    let snd = args.next().expect("Provided a second argument");
     match ty.as_str() {
-        "sender" => become_sender(&snd),
-        "receiver" => become_receiver(&snd),
+        "sender" => become_sender(args),
+        "receiver" => become_receiver(args),
         _ => panic!("Unknown program type {}", ty),
     }
 }
